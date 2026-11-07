@@ -34,7 +34,8 @@ button.secondary{background:#e9edf5;color:var(--ink)}button:disabled{opacity:.45
   <section class="panel" id="intro">
     <div class="stats"><div class="stat"><span id="introN">208</span> pytań</div><div class="stat">Jedna poprawna odpowiedź</div><div class="stat">Natychmiastowa informacja zwrotna</div></div>
     <p>Wybierz odpowiedź, a od razu zobaczysz, czy jest poprawna i dlaczego. Możesz przejść dalej po sprawdzeniu odpowiedzi. Na końcu otrzymasz wynik i listę błędów.</p>
-    <button id="start">Rozpocznij test</button>
+    <p><b>Wybierz zakres testu:</b></p>
+    <div id="modes" style="display:flex;gap:10px;flex-wrap:wrap"></div>
   </section>
   <section id="test" class="hidden">
     <div class="top"><div class="stats"><div class="stat" id="counter">Pytanie 1/100</div><div class="stat" id="liveScore">Wynik: 0/0</div></div><span class="small" id="remaining">Pozostało: 100</span></div>
@@ -44,14 +45,14 @@ button.secondary{background:#e9edf5;color:var(--ink)}button:disabled{opacity:.45
       <h2 id="question"></h2>
       <div class="answers" id="answers"></div>
       <div id="feedback" class="feedback hidden" aria-live="polite"></div>
-      <div class="actions"><button class="secondary" id="restart">Zakończ i zacznij od nowa</button><button id="next" disabled>Następne pytanie →</button></div>
+      <div class="actions"><button class="secondary" id="restart">Zakończ i wróć do wyboru bloku</button><button id="next" disabled>Następne pytanie →</button></div>
     </article>
   </section>
   <section id="result" class="result hidden">
     <div class="tag">KONIEC TESTU</div><div class="score" id="finalScore">0/100</div><h2 id="grade"></h2><p id="percent"></p>
     <div class="stats" style="justify-content:center"><div class="stat" id="correctCount"></div><div class="stat" id="wrongCount"></div></div>
     <div class="review" id="review"></div>
-    <div style="margin-top:20px"><button id="again">Nowe podejście – losuj ponownie</button></div>
+    <div style="margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button id="again">Powtórz ten zestaw</button><button class="secondary" id="menu">Wybierz inny blok</button></div>
   </section>
 </main>
 <script>
@@ -269,7 +270,30 @@ let questions=[], pos=0, score=0, answered=0, history=[];
 const $=id=>document.getElementById(id);
 $("titleN").textContent=bank.length;$("introN").textContent=bank.length;
 function shuffle(arr){let a=[...arr];for(let i=a.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
-function start(){questions=shuffle(bank).map(item=>{let opts=item.a.map((text,i)=>({text,correct:i===item.c}));return {...item,opts:shuffle(opts)};});pos=0;score=0;answered=0;history=[];$("intro").classList.add("hidden");$("result").classList.add("hidden");$("test").classList.remove("hidden");render();}
+
+/* ===== Bloki: pytania podzielone na 4 części ===== */
+const BLOCKS=4, blockSize=Math.ceil(bank.length/BLOCKS);
+let currentSet="all";
+function getSet(set){return set==="all"?bank:bank.slice(set*blockSize,(set+1)*blockSize);}
+function start(set=currentSet){
+  currentSet=set;
+  questions=shuffle(getSet(set)).map(item=>{let opts=item.a.map((text,i)=>({text,correct:i===item.c}));return {...item,opts:shuffle(opts)};});
+  pos=0;score=0;answered=0;history=[];
+  $("titleN").textContent=questions.length;
+  $("intro").classList.add("hidden");$("result").classList.add("hidden");$("test").classList.remove("hidden");render();
+}
+function showMenu(){
+  $("test").classList.add("hidden");$("result").classList.add("hidden");$("intro").classList.remove("hidden");
+  $("titleN").textContent=bank.length;
+}
+(function buildMenu(){
+  const m=$("modes");
+  const add=(label,set,secondary)=>{const b=document.createElement("button");b.textContent=label;if(secondary)b.className="secondary";b.addEventListener("click",()=>start(set));m.appendChild(b);};
+  add(`Wszystkie (${bank.length})`,"all");
+  for(let i=0;i<BLOCKS;i++)add(`Blok ${i+1} (${getSet(i).length})`,i,true);
+})();
+/* ================================================= */
+
 function render(){let q=questions[pos];$("counter").textContent=`Pytanie ${pos+1}/${questions.length}`;$("number").textContent=`PYTANIE ${pos+1}`;$("topic").textContent=q.t;$("question").textContent=q.q;$("answers").innerHTML="";$("feedback").className="feedback hidden";$("feedback").textContent="";$("next").disabled=true;$("next").textContent=pos===questions.length-1?"Zobacz wynik →":"Następne pytanie →";
 q.opts.forEach((o,i)=>{let label=document.createElement("label");label.className="answer";label.innerHTML=`<input type="radio" name="answer" value="${i}"><span><b>${String.fromCharCode(65+i)}.</b> ${escapeHtml(o.text)}</span>`;label.addEventListener("click",()=>choose(i));$("answers").appendChild(label);});
 updateStats();}
@@ -280,7 +304,10 @@ let f=$("feedback");f.className="feedback "+(chosen.correct?"good":"bad");f.inne
 function updateStats(){$("liveScore").textContent=`Wynik: ${score}/${answered}`;$("remaining").textContent=`Pozostało: ${questions.length-answered}`;$("bar").style.width=`${answered/questions.length*100}%`;}
 function finish(){$("test").classList.add("hidden");$("result").classList.remove("hidden");$("finalScore").textContent=`${score}/${questions.length}`;$("percent").textContent=`Skuteczność: ${Math.round(score/questions.length*100)}%`;$("correctCount").textContent=`Poprawne: ${score}`;$("wrongCount").textContent=`Błędne: ${questions.length-score}`;$("grade").textContent=score/questions.length>=0.9?"Świetny wynik!":score/questions.length>=0.75?"Bardzo dobrze – kilka rzeczy do powtórki.":score/questions.length>=0.6?"Dobry początek – warto powtórzyć błędy.":"Przyda się jeszcze jedna runda nauki.";
 let misses=history.filter(x=>!x.ok);$("review").innerHTML=misses.length?`<h3>Odpowiedzi do powtórzenia (${misses.length})</h3>`+misses.map((x,i)=>`<div class="review-item"><strong>${i+1}. ${escapeHtml(x.q)}</strong><div class="small">Twoja odpowiedź: ${escapeHtml(x.chosen)}</div><div>Poprawna: <b>${escapeHtml(x.correct)}</b></div><div class="small">${escapeHtml(x.explain)}</div></div>`).join(""):"<h3>Bez błędów – komplet punktów!</h3>";}
-$("start").addEventListener("click",start);$("again").addEventListener("click",start);$("restart").addEventListener("click",()=>{if(confirm("Zakończyć bieżące podejście i wylosować nowy zestaw?"))start();});$("next").addEventListener("click",()=>{if(pos===questions.length-1)finish();else{pos++;render();}});
+$("again").addEventListener("click",()=>start());
+$("menu").addEventListener("click",showMenu);
+$("restart").addEventListener("click",()=>{if(confirm("Zakończyć bieżące podejście i wrócić do wyboru bloku?"))showMenu();});
+$("next").addEventListener("click",()=>{if(pos===questions.length-1)finish();else{pos++;render();}});
 </script>
 </body>
 </html>
